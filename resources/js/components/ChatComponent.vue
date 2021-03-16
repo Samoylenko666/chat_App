@@ -43,8 +43,9 @@
                 
                 <message-component 
                  v-if="friend.session.open"  
-                 @close="close(friend)" :friend=friend>   <!-- кнопка close  -->
                 
+                 @close="close(friend)" :friend=friend>   <!-- кнопка close  -->
+                 <!-- вот здесь friend  это пропс для message component -->
                 </message-component>
 
             </span> </span>
@@ -67,17 +68,14 @@ import MessageComponent from './MessageComponent';
             close(friend){
                 friend.session.open=false
             },
+
             getFriends(){
                 axios.post('/getFriends').then(res=>{
                     this.friends= res.data.data  
                     this.friends.forEach(friend=>(friend.session?this.listenForEverySession(friend):""));
-
-
-                        
-                        
-                    
                 });
             },
+
             openChat(friend){
                 if(friend.session){
                     this.friends.forEach(friend=>{
@@ -100,6 +98,7 @@ import MessageComponent from './MessageComponent';
         });
         },
         listenForEverySession(friend){
+            //Слушается событие которое считает количество не прочитаных сообщений
              Echo.private(`Chat.${friend.session.id}`)
                           .listen("PrivateChatEvent",(e)=> friend.session.open?"":friend.session.unreadCount++
               
@@ -112,11 +111,18 @@ import MessageComponent from './MessageComponent';
            // this.$on('close',()=>this.close()); //  вызывается функция close когда из Другого компонета запустится функция с emit
         this.getFriends();
         
+
+      
+           //для обычного канала  не нужна авторизация
+           //он выводит всех пользователей которые онлайн
+        // Слушается события которое передает что кто-то создал сессию между текущим юзером
         Echo.channel('Chat').listen('SessionEvent',e=>{
             let friend= this.friends.find(friend=> friend.id==e.session_by);
             friend.session=e.session;
+            //запускается счетчик непрочитаных сообщений
             this.listenForEverySession(friend);
         });
+       //Еcho  для мониторинга онлайн/офлайн юзеров
         Echo.join('Chat')
         .here((users)=>{
             this.friends.forEach(friend=>{
@@ -125,11 +131,10 @@ import MessageComponent from './MessageComponent';
                 }
                 })
             })
-        })
+        }) // Если юзер присоеденился/зашел на эту страницу его статус становится онлайн
       .joining((user) => {
-
         this.friends.forEach(friend=>user.id==friend.id? friend.online=true:'')
-      })
+      }) // Если юзер покинул страницу его статус становится оффлайн
        .leaving((user) => {
          this.friends.forEach(friend=>user.id==friend.id? friend.online=false:'')
     });

@@ -26,3 +26,6 @@ Route::post('/session/create', [App\Http\Controllers\SessionController::class, '
 Route::post('/send/{session}', [App\Http\Controllers\ChatController::class, 'send']);//метод для отправки смс
 Route::post('/session/{session}/chats', [App\Http\Controllers\ChatController::class, 'getChats']);//метод для получения всех сообщений для текущего чата
 Route::post('/session/{session}/read', [App\Http\Controllers\ChatController::class, 'read']);//метод для записси в бд когда прочитано сообщение
+Route::post('/session/{session}/clear', [App\Http\Controllers\ChatController::class, 'clear']);//метод для очистки истории сообщений
+Route::post('/session/{session}/block', [App\Http\Controllers\BlockController::class, 'block']);//метод  блокировки пользователя
+Route::post('/session/{session}/unblock', [App\Http\Controllers\BlockController::class, 'unblock']);//метод  разблокировки пользователя

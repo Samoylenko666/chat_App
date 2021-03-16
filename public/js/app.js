@@ -1902,6 +1902,7 @@ __webpack_require__.r(__webpack_exports__);
 //
 //
 //
+//
 
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
   data: function data() {
@@ -1951,6 +1952,7 @@ __webpack_require__.r(__webpack_exports__);
       });
     },
     listenForEverySession: function listenForEverySession(friend) {
+      //Слушается событие которое считает количество не прочитаных сообщений
       Echo["private"]("Chat.".concat(friend.session.id)).listen("PrivateChatEvent", function (e) {
         return friend.session.open ? "" : friend.session.unreadCount++;
       });
@@ -1960,16 +1962,20 @@ __webpack_require__.r(__webpack_exports__);
     var _this2 = this;
 
     // this.$on('close',()=>this.close()); //  вызывается функция close когда из Другого компонета запустится функция с emit
-    this.getFriends();
+    this.getFriends(); //для обычного канала  не нужна авторизация
+    //он выводит всех пользователей которые онлайн
+    // Слушается события которое передает что кто-то создал сессию между текущим юзером
+
     Echo.channel('Chat').listen('SessionEvent', function (e) {
       var friend = _this2.friends.find(function (friend) {
         return friend.id == e.session_by;
       });
 
-      friend.session = e.session;
+      friend.session = e.session; //запускается счетчик непрочитаных сообщений
 
       _this2.listenForEverySession(friend);
-    });
+    }); //Еcho  для мониторинга онлайн/офлайн юзеров
+
     Echo.join('Chat').here(function (users) {
       _this2.friends.forEach(function (friend) {
         users.forEach(function (user) {
@@ -1978,11 +1984,13 @@ __webpack_require__.r(__webpack_exports__);
           }
         });
       });
-    }).joining(function (user) {
+    }) // Если юзер присоеденился/зашел на эту страницу его статус становится онлайн
+    .joining(function (user) {
       _this2.friends.forEach(function (friend) {
         return user.id == friend.id ? friend.online = true : '';
       });
-    }).leaving(function (user) {
+    }) // Если юзер покинул страницу его статус становится оффлайн
+    .leaving(function (user) {
       _this2.friends.forEach(function (friend) {
         return user.id == friend.id ? friend.online = false : '';
       });
@@ -2072,22 +2080,50 @@ __webpack_require__.r(__webpack_exports__);
 //
 //
 //
+//
+//
+//
+//
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
   props: ['friend'],
   data: function data() {
     return {
       chats: [],
-      block_session: false,
-      message: null
+      message: null,
+      isTyping: false
     };
+  },
+  computed: {
+    //Создается session которая типа как переменая/ниже обращаюсь просто this.session.blockХпример)
+    // Получается к session приравниввается friend.session
+    session: function session() {
+      return this.friend.session;
+    },
+    can: function can() {
+      // через window получаю переменную auth из другого html документа
+      return this.session.blocked_by == auth.id; // Возвращает true or false
+    }
+  },
+  watch: {
+    message: function message(value) {
+      //Когда юзер пишет сообщения слушается событие, которое передает имя кто набирает сообщение
+      Echo["private"]("Chat.".concat(this.friend.session.id)).whisper('typing', {
+        name: auth.name
+      });
+    }
   },
   methods: {
     send: function send() {
+      var _this = this;
+
       if (this.message) {
         this.pushToChats(this.message);
         axios.post("/send/".concat(this.friend.session.id), {
           content: this.message,
           to_user: this.friend.id
+        }).then(function (res) {
+          return _this.chats[_this.chats.length - 1] // последний элемент массива
+          .id = res.data;
         });
         this.message = null;
       }
@@ -2096,6 +2132,7 @@ __webpack_require__.r(__webpack_exports__);
       this.chats.push({
         message: message,
         type: 0,
+        read_at: null,
         sent_at: 'Just Now'
       });
     },
@@ -2103,20 +2140,34 @@ __webpack_require__.r(__webpack_exports__);
       this.$emit('close');
     },
     clear: function clear() {
-      this.chats = [];
+      var _this2 = this;
+
+      //this.chats=[];
+      axios.post("/session/".concat(this.friend.session.id, "/clear")).then(function (res) {
+        return _this2.chats = [];
+      });
     },
     block: function block() {
-      this.block_session = true;
-      console.log(this.block_session);
+      var _this3 = this;
+
+      this.session.block = true;
+      axios.post("/session/".concat(this.friend.session.id, "/block")).then(function (res) {
+        return _this3.session.blocked_by = auth.id;
+      });
     },
     Unblock: function Unblock() {
-      this.block_session = false;
+      var _this4 = this;
+
+      this.session.block = false;
+      axios.post("/session/".concat(this.friend.session.id, "/unblock")).then(function (res) {
+        return _this4.session.blocked_by = null;
+      });
     },
     getAllMessage: function getAllMessage() {
-      var _this = this;
+      var _this5 = this;
 
       axios.post("/session/".concat(this.friend.session.id, "/chats")).then(function (res) {
-        return _this.chats = res.data.data;
+        return _this5.chats = res.data.data;
       });
     },
     read: function read() {
@@ -2124,19 +2175,41 @@ __webpack_require__.r(__webpack_exports__);
     }
   },
   created: function created() {
-    var _this2 = this;
+    var _this6 = this;
 
     this.getAllMessage();
-    this.read();
-    Echo["private"]("Chat.".concat(this.friend.session.id)).listen("PrivateChatEvent", function (e) {
-      // console.log(e)
-      _this2.read();
+    this.read(); // Вся хуйня котороая в Echo обновлятся асинхронно(Без перезагрузки страницы)
+    //для private канала нужна авторизация
+    //Слушается событие если юзеру отправили сообщения в массив чат добавляется сообщение от юзера
 
-      _this2.chats.push({
+    Echo["private"]("Chat.".concat(this.friend.session.id)).listen("PrivateChatEvent", function (e) {
+      //Если юзер  открыл сообщение тогда вызывается метод read() который делает все отправленные сообщения прочитаными
+      //для  юзера который их отправил
+      _this6.friend.session.open ? _this6.read() : "";
+
+      _this6.chats.push({
         message: e.content,
         type: 1,
         sent_at: 'Just Now'
       });
+    }); //Когда юзер прочитает сообщения переменная read_at принимает значение
+
+    Echo["private"]("Chat.".concat(this.friend.session.id)).listen("MsgReadEvent", function (e) {
+      return _this6.chats.forEach(function (chat) {
+        return chat.id == e.chat.id ? chat.read_at = e.chat.read_at : "";
+      });
+    }); //Если юзера заблокируют слушается событие и переменная блок становится тру
+
+    Echo["private"]("Chat.".concat(this.friend.session.id)).listen("BlockEvent", function (e) {
+      return _this6.session.block = e.blocked;
+    }); //Слушается событие если кто то пишет сообщение, переменная истайпинг принимает тру 
+
+    Echo["private"]("Chat.".concat(this.friend.session.id)).listenForWhisper('typing', function (e) {
+      _this6.isTyping = true; //Задержка в 2секунду после которой истайпинг становится снова false
+
+      setTimeout(function () {
+        _this6.isTyping = false;
+      }, 2000);
     });
   }
 });
@@ -44439,9 +44512,13 @@ var render = function() {
   var _c = _vm._self._c || _h
   return _c("div", { staticClass: "card chat-box" }, [
     _c("div", { staticClass: "card-header" }, [
-      _c("b", { class: { "text-danger": _vm.block_session } }, [
-        _vm._v(" " + _vm._s(_vm.friend.name) + "\n                           "),
-        _vm.block_session
+      _c("b", { class: { "text-danger": _vm.session.block } }, [
+        _vm._v(
+          "\n                            " + _vm._s(_vm.friend.name) + " "
+        ),
+        _vm.isTyping ? _c("span", [_vm._v("is Typing...")]) : _vm._e(),
+        _vm._v(" "),
+        _vm.session.block
           ? _c("span", [_vm._v(" ( You are Blocked)")])
           : _vm._e()
       ]),
@@ -44470,7 +44547,7 @@ var render = function() {
             attrs: { "aria-labelledby": "dropdownMenuButton1" }
           },
           [
-            _vm.block_session
+            _vm.session.block && _vm.can
               ? _c(
                   "a",
                   {
@@ -44485,7 +44562,10 @@ var render = function() {
                   },
                   [_vm._v("UnBlock")]
                 )
-              : _c(
+              : _vm._e(),
+            _vm._v(" "),
+            !_vm.session.block
+              ? _c(
                   "a",
                   {
                     staticClass: "dropdown-item",
@@ -44498,7 +44578,8 @@ var render = function() {
                     }
                   },
                   [_vm._v("Block")]
-                ),
+                )
+              : _vm._e(),
             _vm._v(" "),
             _c(
               "a",
@@ -44531,14 +44612,22 @@ var render = function() {
           {
             key: chat.id,
             staticClass: "card-text",
-            class: { "text-right": chat.type == 0 }
+            class: {
+              "text-right": chat.type == 0,
+              "text-success": chat.read_at != null
+            }
           },
           [
             _vm._v(
               "\n                        " +
                 _vm._s(chat.message) +
-                "\n                          "
-            )
+                "\n                        "
+            ),
+            _c("br"),
+            _vm._v(" "),
+            _c("span", { staticStyle: { "font-size": "10px" } }, [
+              _vm._v(_vm._s(chat.read_at))
+            ])
           ]
         )
       }),
@@ -44571,7 +44660,7 @@ var render = function() {
             attrs: {
               type: "text",
               placeholder: "Write your message here",
-              disabled: _vm.block_session
+              disabled: _vm.session.block
             },
             domProps: { value: _vm.message },
             on: {
